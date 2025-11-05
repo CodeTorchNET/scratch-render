@@ -1,6 +1,6 @@
 const EventEmitter = require('events');
 
-const hull = require('hull.js');
+const hull = require('@turbowarp/ancient-hull.js');
 const twgl = require('twgl.js');
 
 const SVGRenderer = require('@turbowarp/scratch-svg-renderer');
@@ -122,7 +122,12 @@ class RenderWebGL extends EventEmitter {
     static isSupported (optCanvas) {
         try {
             optCanvas = optCanvas || document.createElement('canvas');
-            const options = {alpha: false, stencil: true, antialias: false};
+            const options = {
+                alpha: true,
+                stencil: true,
+                antialias: false,
+                powerPreference: RenderWebGL.powerPreference
+            };
             // Don't use twgl's getContext here because it will spend a few milliseconds enabling extensions
             // on a context that won't get used.
             return !!(
@@ -143,7 +148,7 @@ class RenderWebGL extends EventEmitter {
      */
     static _getContext (canvas) {
         const contextAttribs = {
-            alpha: false,
+            alpha: true,
             stencil: true,
             antialias: false,
             powerPreference: RenderWebGL.powerPreference
@@ -412,17 +417,21 @@ class RenderWebGL extends EventEmitter {
      * @param {number} red The red component for the background.
      * @param {number} green The green component for the background.
      * @param {number} blue The blue component for the background.
+     * @param {number} alpha The alpha component for the background.
      */
-    setBackgroundColor (red, green, blue) {
+    setBackgroundColor (red, green, blue, alpha = 1) {
         this.dirty = true;
 
-        this._backgroundColor4f[0] = red;
-        this._backgroundColor4f[1] = green;
-        this._backgroundColor4f[2] = blue;
+        // WebGL will want the color to be pre-multiplied.
 
-        this._backgroundColor3b[0] = red * 255;
-        this._backgroundColor3b[1] = green * 255;
-        this._backgroundColor3b[2] = blue * 255;
+        this._backgroundColor4f[0] = red * alpha;
+        this._backgroundColor4f[1] = green * alpha;
+        this._backgroundColor4f[2] = blue * alpha;
+        this._backgroundColor4f[3] = alpha;
+
+        this._backgroundColor3b[0] = red * alpha * 255;
+        this._backgroundColor3b[1] = green * alpha * 255;
+        this._backgroundColor3b[2] = blue * alpha * 255;
 
     }
 
@@ -728,6 +737,18 @@ class RenderWebGL extends EventEmitter {
     }
 
     /**
+     * Mark a drawable as being non-interactive by default.
+     * @param {number} drawableID The drawable's ID
+     */
+    markDrawableAsNoninteractive (drawableID) {
+        const drawable = this._allDrawables[drawableID];
+        if (!drawable) {
+            return;
+        }
+        drawable.interactive = false;
+    }
+
+    /**
      * Set the layer group ordering for the renderer.
      * @param {Array<string>} groupOrdering The ordered array of layer group
      * names
@@ -885,9 +906,10 @@ class RenderWebGL extends EventEmitter {
 
     skinWasAltered (skin) {
         // This is very hot function.
-        for (let i = 0; i < this._allDrawables.length; i++) {
-            const drawable = this._allDrawables[i];
-            if (drawable && drawable._skin === skin) {
+        for (let i = 0; i < this._drawList.length; i++) {
+            const drawableId = this._drawList[i];
+            const drawable = this._allDrawables[drawableId];
+            if (drawable._skin === skin) {
                 drawable._skinWasAltered();
             }
         }
@@ -908,7 +930,13 @@ class RenderWebGL extends EventEmitter {
 
         twgl.bindFramebufferInfo(gl, null);
         gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-        gl.clearColor(...this._backgroundColor4f);
+        // Context expects pre-multiplied colors.
+        gl.clearColor(
+            this._backgroundColor4f[0],
+            this._backgroundColor4f[1],
+            this._backgroundColor4f[2],
+            this._backgroundColor4f[3]
+        );
         gl.clear(gl.COLOR_BUFFER_BIT);
 
         const snapshotRequested = this._snapshotCallbacks.length > 0;
@@ -1083,7 +1111,7 @@ class RenderWebGL extends EventEmitter {
                 if (hasMask ?
                     maskMatches(Drawable.sampleColor4b(point, drawable, color, effectMask), mask3b) :
                     drawable.isTouching(point)) {
-                    RenderWebGL.sampleColor3b(point, candidates, color);
+                    this.sampleColor4b(point, candidates, color);
                     if (debugCanvasContext) {
                         debugCanvasContext.fillStyle = `rgb(${color[0]},${color[1]},${color[2]})`;
                         debugCanvasContext.fillRect(x - bounds.left, bounds.bottom - y, 1, 1);
@@ -1223,11 +1251,15 @@ class RenderWebGL extends EventEmitter {
      * @returns {boolean} True if the Drawable is touching one of candidateIDs.
      */
     isTouchingDrawables (drawableID, candidateIDs = this._drawList) {
+        // if we are invisible we don't touch anything.
+        if (!this._allDrawables[drawableID]._visible) {
+            return false;
+        }
+
         const candidates = this._candidatesTouching(drawableID,
             // even if passed an invisible drawable, we will NEVER touch it!
             candidateIDs.filter(id => this._allDrawables[id]._visible));
-        // if we are invisble we don't touch anything.
-        if (candidates.length === 0 || !this._allDrawables[drawableID]._visible) {
+        if (candidates.length === 0) {
             return false;
         }
 
@@ -1350,17 +1382,19 @@ class RenderWebGL extends EventEmitter {
     pick (centerX, centerY, touchWidth, touchHeight, candidateIDs) {
         const bounds = this.clientSpaceToScratchBounds(centerX, centerY, touchWidth, touchHeight);
         if (bounds.left === -Infinity || bounds.bottom === -Infinity) {
-            return false;
+            return RenderConstants.ID_NONE;
         }
 
         candidateIDs = (candidateIDs || this._drawList).filter(id => {
             const drawable = this._allDrawables[id];
+            if (!candidateIDs && !drawable.interactive) {
+                return false;
+            }
             // default pick list ignores visible and ghosted sprites.
             if (drawable.getVisible() && drawable.getUniforms().u_ghost !== 0) {
                 const drawableBounds = drawable.getFastBounds();
                 const inRange = bounds.intersects(drawableBounds);
                 if (!inRange) return false;
-                if (drawable.skin instanceof PenSkin) return false;
 
                 drawable.updateCPURenderAttributes();
                 return true;
@@ -1368,7 +1402,7 @@ class RenderWebGL extends EventEmitter {
             return false;
         });
         if (candidateIDs.length === 0) {
-            return false;
+            return RenderConstants.ID_NONE;
         }
 
         const hits = [];
@@ -1550,7 +1584,13 @@ class RenderWebGL extends EventEmitter {
         gl.viewport(0, 0, bounds.width, bounds.height);
         const projection = twgl.m4.ortho(bounds.left, bounds.right, bounds.top, bounds.bottom, -1, 1);
 
-        gl.clearColor(...this._backgroundColor4f);
+        // Context expects pre-multiplied colors.
+        gl.clearColor(
+            this._backgroundColor4f[0],
+            this._backgroundColor4f[1],
+            this._backgroundColor4f[2],
+            this._backgroundColor4f[3]
+        );
         gl.clear(gl.COLOR_BUFFER_BIT);
         this._drawThese(this._drawList, ShaderManager.DRAW_MODE.default, projection);
 
@@ -1611,20 +1651,6 @@ class RenderWebGL extends EventEmitter {
 
         if (bounds.width === 0 || bounds.height === 0) {
             // No space to query.
-            return null;
-        }
-        return bounds;
-    }
-
-    _unsnappedTouchingBounds (drawableID) {
-        // _touchingBounds with the snapToint call removed.
-        const drawable = this._allDrawables[drawableID];
-        if (!drawable.skin || !drawable.skin.getTexture([100, 100])) return null;
-        const bounds = drawable.getFastBounds();
-        if (!this.offscreenTouching) {
-            bounds.clamp(this._xLeft, this._xRight, this._yBottom, this._yTop);
-        }
-        if (bounds.width === 0 || bounds.height === 0) {
             return null;
         }
         return bounds;
@@ -1883,15 +1909,22 @@ class RenderWebGL extends EventEmitter {
      * @param {int} stampID - the unique ID of the Drawable to use as the stamp.
      */
     penStamp (penSkinID, stampID) {
-        this.dirty = true;
         const stampDrawable = this._allDrawables[stampID];
-        if (!stampDrawable) {
+        if (
+            !stampDrawable ||
+            !stampDrawable.skin ||
+            !stampDrawable.skin.isMetricsReady()
+        ) {
             return;
         }
 
-        // TW: The bounds will be snapped later
-        const bounds = this._unsnappedTouchingBounds(stampID);
-        if (!bounds) {
+        const bounds = stampDrawable.getFastBounds();
+        // Ideally we wouldn't need to check offscreenTouching at all here, but the camera extensions
+        // do too many crazy things to risk changing this control flow.
+        if (!this.offscreenTouching) {
+            bounds.clamp(this._xLeft, this._xRight, this._yBottom, this._yTop);
+        }
+        if (bounds.width === 0 || bounds.height === 0) {
             return;
         }
 
@@ -1934,6 +1967,7 @@ class RenderWebGL extends EventEmitter {
             framebufferHeight: this._nativeSize[1] * quality
         });
         skin._silhouetteDirty = true;
+        this.dirty = true;
     }
 
     /* ******
@@ -2085,11 +2119,14 @@ class RenderWebGL extends EventEmitter {
                 drawable.scale[1] * opts.framebufferHeight / this._nativeSize[1]
             ] : drawable.scale;
 
-            // If the skin or texture isn't ready yet, skip it.
-            if (!drawable.skin || !drawable.skin.getTexture(drawableScale)) continue;
+            // Skip drawables with no skin.
+            if (!drawable.skin) continue;
 
             // Skip private skins, if requested.
             if (opts.skipPrivateSkins && drawable.skin.private) continue;
+
+            // Skip drawables with a skin that does not have a texture.
+            if (!drawable.skin.getTexture(drawableScale)) continue;
 
             const uniforms = {};
 
@@ -2278,9 +2315,13 @@ class RenderWebGL extends EventEmitter {
      * @param {Uint8ClampedArray} dst The color3b space to store the answer in.
      * @return {Uint8ClampedArray} The dst vector with everything blended down.
      */
-    static sampleColor3b (vec, drawables, dst) {
-        dst = dst || new Uint8ClampedArray(3);
-        dst.fill(0);
+    sampleColor4b (vec, drawables, dst) {
+        dst = dst || new Uint8ClampedArray(4);
+        dst[0] = 0;
+        dst[1] = 0;
+        dst[2] = 0;
+        // dst[3] is set at the end
+
         let blendAlpha = 1;
         for (let index = 0; blendAlpha !== 0 && index < drawables.length; index++) {
             /*
@@ -2296,11 +2337,13 @@ class RenderWebGL extends EventEmitter {
             dst[2] += __blendColor[2] * blendAlpha;
             blendAlpha *= (1 - (__blendColor[3] / 255));
         }
-        // Backdrop could be transparent, so we need to go to the "clear color" of the
-        // draw scene (white) as a fallback if everything was alpha
-        dst[0] += blendAlpha * 255;
-        dst[1] += blendAlpha * 255;
-        dst[2] += blendAlpha * 255;
+        // Backdrop could be transparent, so we need to go to the background color of the
+        // draw scene as a fallback if drawables are transparent.
+        dst[0] += 255 * this._backgroundColor4f[0] * blendAlpha;
+        dst[1] += 255 * this._backgroundColor4f[1] * blendAlpha;
+        dst[2] += 255 * this._backgroundColor4f[2] * blendAlpha;
+        blendAlpha *= 1 - this._backgroundColor4f[3];
+        dst[3] = 255 * (1 - blendAlpha);
         return dst;
     }
 
