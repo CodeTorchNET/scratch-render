@@ -1,6 +1,6 @@
-# TurboWarp/scratch-render
+# CodeTorch/scratch-render
 
-scratch-render modified for use in [TurboWarp](https://turbowarp.org/). We've optimized some operations and added a lot of options.
+scratch-render modified for use in CodeTorch. We've optimized some operations and added a lot of options.
 
 ## Setup
 
