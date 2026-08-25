@@ -690,6 +690,16 @@ class RenderWebGL extends EventEmitter {
      */
     destroySkin (skinId) {
         const oldSkin = this._allSkins[skinId];
+        /*
+        Destroying a skin that is already gone is a no-op, not an error.
+
+        `costumeSync.syncRemoteToLocal` destroys every skin a rebuilt costume list no longer
+        references, and a costume converting between vector and bitmap can have taken one already.
+        Throwing there did far more than log: it abandoned the rest of the rebuild, so the costumes
+        after the failure kept whatever pictures they had, with nothing to say the list was only
+        half applied.
+        */
+        if (!oldSkin) return;
         oldSkin.dispose();
         delete this._allSkins[skinId];
     }
