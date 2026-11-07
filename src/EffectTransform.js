@@ -8,6 +8,7 @@ const twgl = require('twgl.js');
 
 const {rgbToHsv, hsvToRgb} = require('./util/color-conversions');
 const ShaderManager = require('./ShaderManager');
+const ctPmEffects = require('./ct-pm-effects');
 
 /**
  * A texture coordinate is between 0 and 1. 0.5 is the center position.
@@ -45,6 +46,7 @@ class EffectTransform {
 
         let effects = drawable.enabledEffects;
         if (typeof effectMask === 'number') effects &= effectMask;
+        if (effects & ctPmEffects.masks.colour) return ctPmEffects.transformColor(drawable, inOutColor, effects);
         const uniforms = drawable.getUniforms();
 
         const enableColor = (effects & ShaderManager.EFFECT_INFO.color.mask) !== 0;
@@ -188,6 +190,9 @@ class EffectTransform {
             // texcoord0 = kCenter + r * unit * kCenter;
             dst[0] = CENTER_X + (r * unitX * CENTER_X);
             dst[1] = CENTER_Y + (r * unitY * CENTER_Y);
+        }
+        if ((effects & (ctPmEffects.masks.repeatX | ctPmEffects.masks.repeatY)) !== 0) {
+            ctPmEffects.transformPoint(drawable, dst, effects);
         }
 
         return dst;

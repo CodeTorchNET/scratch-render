@@ -156,6 +156,8 @@ ShaderManager.EFFECT_INFO = {
     }
 };
 
+require('./ct-pm-effects').register(ShaderManager.EFFECT_INFO);
+
 /**
  * The name of each supported effect.
  * @type {Array}

@@ -16,6 +16,7 @@ const TextBubbleSkin = require('./TextBubbleSkin');
 const EffectTransform = require('./EffectTransform');
 const CanvasMeasurementProvider = require('./util/canvas-measurement-provider');
 const log = require('./util/log');
+const ctPmCamera = require('./ct-pm-camera');
 
 const __isTouchingDrawablesPoint = twgl.v3.create();
 const __candidatesBounds = new Rectangle();
@@ -1876,6 +1877,8 @@ class RenderWebGL extends EventEmitter {
             return [x, y];
         }
 
+        if (drawable._ctPmCamera) return ctPmCamera.fencedPosition(this, drawable, position, __fenceBounds);
+
         const dx = x - drawable._position[0];
         const dy = y - drawable._position[1];
         const aabb = drawable._skin.getFenceBounds(drawable, __fenceBounds);
@@ -2459,5 +2462,8 @@ RenderWebGL.UseGpuModes = {
  * @type {'default'|'high-performance'|'low-power'}
  */
 RenderWebGL.powerPreference = 'default';
+
+require('./ct-pm-render')(RenderWebGL);
+ctPmCamera.install(RenderWebGL);
 
 module.exports = RenderWebGL;

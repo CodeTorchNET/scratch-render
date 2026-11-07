@@ -3,6 +3,7 @@ const twgl = require('twgl.js');
 const Skin = require('./Skin');
 const {loadSvgString, serializeSvgToString} = require('@turbowarp/scratch-svg-renderer');
 const ShaderManager = require('./ShaderManager');
+const ctPmCamera = require('./ct-pm-camera');
 
 /**
  * All scaled renderings of the SVG are stored in an array. The 1.0 scale of
@@ -82,6 +83,7 @@ class SVGSkin extends Skin {
         if (drawable._direction % 90 !== 0) {
             return false;
         }
+        if (ctPmCamera.rotated(drawable)) return false;
 
         // Because SVG skins' bounding boxes are currently not pixel-aligned, the idea here is to hide blurriness
         // by using nearest-neighbor scaling if one screen-space pixel is "close enough" to one texture pixel.

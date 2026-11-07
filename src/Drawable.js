@@ -4,6 +4,8 @@ const Rectangle = require('./Rectangle');
 const RenderConstants = require('./RenderConstants');
 const ShaderManager = require('./ShaderManager');
 const EffectTransform = require('./EffectTransform');
+const ctPmEffects = require('./ct-pm-effects');
+const ctPmCamera = require('./ct-pm-camera');
 const log = require('./util/log');
 
 /**
@@ -187,6 +189,7 @@ class Drawable {
      * @returns {Array<number>} the current scaling percentages applied to this Drawable. [100,100] is normal size.
      */
     get scale () {
+        if (this._ctPmCamera) return ctPmCamera.viewScale(this);
         return [this._scale[0], this._scale[1]];
     }
 
@@ -285,6 +288,7 @@ class Drawable {
         if (effectInfo.shapeChanges) {
             this.setConvexHullDirty();
         }
+        if (effectInfo.geometry) ctPmEffects.updateGeometry(this);
     }
 
     /**
@@ -454,6 +458,8 @@ class Drawable {
         modelMatrix[13] = (rotation01 * adjusted0) + (rotation11 * adjusted1) + position1;
         // modelMatrix[14] = 0;
         // modelMatrix[15] = 1;
+        if (this._ctPmGeometry) ctPmEffects.applyGeometry(this, modelMatrix);
+        if (this._ctPmCamera) ctPmCamera.applyView(this, modelMatrix);
 
         this._transformDirty = false;
     }

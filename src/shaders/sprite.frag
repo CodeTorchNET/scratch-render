@@ -33,6 +33,39 @@ uniform float u_mosaic;
 uniform float u_ghost;
 #endif // ENABLE_ghost
 
+// ct-pm: PenguinMod's extra effects (see ct-pm-effects.js). Shear and repeat's quad stretch are
+// in the drawable's model matrix; only repeat's texture tiling is done here.
+#ifdef ENABLE_red
+uniform float u_red;
+#endif // ENABLE_red
+#ifdef ENABLE_green
+uniform float u_green;
+#endif // ENABLE_green
+#ifdef ENABLE_blue
+uniform float u_blue;
+#endif // ENABLE_blue
+#ifdef ENABLE_opaque
+uniform float u_opaque;
+#endif // ENABLE_opaque
+#if defined(ENABLE_saturation) && !defined(DRAW_MODE_silhouette)
+uniform float u_saturation;
+#endif // ENABLE_saturation
+#if defined(ENABLE_tintColor) && !defined(DRAW_MODE_silhouette)
+uniform highp float u_tintColor;
+#endif // ENABLE_tintColor
+#ifdef ENABLE_repeat_x
+uniform float u_repeatX;
+#endif // ENABLE_repeat_x
+#ifdef ENABLE_repeat_y
+uniform float u_repeatY;
+#endif // ENABLE_repeat_y
+// Effects that work on straight (un-premultiplied) colour, like color and brightness. They can't
+// change which pixels are transparent, so silhouettes skip them.
+#if !defined(DRAW_MODE_silhouette) && (defined(ENABLE_saturation) || defined(ENABLE_tintColor))
+#define CT_PM_STRAIGHT_COLOR
+#endif
+// ct-pm end
+
 #ifdef DRAW_MODE_line
 varying vec4 v_lineColor;
 varying float v_lineThickness;
@@ -53,7 +86,7 @@ varying vec2 v_texCoord;
 // Smaller values can cause problems on some mobile devices.
 const float epsilon = 1e-3;
 
-#if !defined(DRAW_MODE_silhouette) && (defined(ENABLE_color))
+#if !defined(DRAW_MODE_silhouette) && (defined(ENABLE_color) || defined(CT_PM_STRAIGHT_COLOR)) // ct-pm
 // Branchless color conversions based on code from:
 // http://www.chilliant.com/rgb2hsv.html by Ian Taylor
 // Based in part on work by Sam Hocevar and Emil Persson
@@ -109,7 +142,7 @@ vec3 convertHSV2RGB(vec3 hsv)
 	float c = hsv.z * hsv.y;
 	return rgb * c + hsv.z - c;
 }
-#endif // !defined(DRAW_MODE_silhouette) && (defined(ENABLE_color))
+#endif // !defined(DRAW_MODE_silhouette) && (defined(ENABLE_color) || defined(CT_PM_STRAIGHT_COLOR))
 
 const vec2 kCenter = vec2(0.5, 0.5);
 
@@ -159,9 +192,17 @@ void main()
 	}
 	#endif // ENABLE_fisheye
 
+	// ct-pm: repeat tiles the costume across the stretched quad
+	#ifdef ENABLE_repeat_x
+	if (u_repeatX != 1.0) texcoord0.x = fract(texcoord0.x * u_repeatX);
+	#endif // ENABLE_repeat_x
+	#ifdef ENABLE_repeat_y
+	if (u_repeatY != 1.0) texcoord0.y = fract(texcoord0.y * u_repeatY);
+	#endif // ENABLE_repeat_y
+
 	gl_FragColor = texture2D(u_skin, texcoord0);
 
-	#if defined(ENABLE_color) || defined(ENABLE_brightness)
+	#if defined(ENABLE_color) || defined(ENABLE_brightness) || defined(CT_PM_STRAIGHT_COLOR) // ct-pm
 	// Divide premultiplied alpha values for proper color processing
 	// Add epsilon to avoid dividing by 0 for fully transparent pixels
 	gl_FragColor.rgb = clamp(gl_FragColor.rgb / (gl_FragColor.a + epsilon), 0.0, 1.0);
@@ -184,6 +225,23 @@ void main()
 	}
 	#endif // ENABLE_color
 
+	// ct-pm: saturation multiplies HSV saturation (unclamped, like PenguinMod), tint multiplies RGB
+	#if defined(ENABLE_saturation) && defined(CT_PM_STRAIGHT_COLOR)
+	{
+		vec3 hsv = convertRGB2HSV(gl_FragColor.xyz);
+		hsv.y *= u_saturation;
+		gl_FragColor.rgb = convertHSV2RGB(hsv);
+	}
+	#endif // ENABLE_saturation
+	#if defined(ENABLE_tintColor) && defined(CT_PM_STRAIGHT_COLOR)
+	{
+		highp float tintBlue = mod(u_tintColor, 256.0);
+		highp float tintGreen = mod(floor(u_tintColor / 256.0), 256.0);
+		highp float tintRed = mod(floor(u_tintColor / 65536.0), 256.0);
+		gl_FragColor.rgb *= vec3(tintRed, tintGreen, tintBlue) / 255.0;
+	}
+	#endif // ENABLE_tintColor
+
 	#ifdef ENABLE_brightness
 	gl_FragColor.rgb = clamp(gl_FragColor.rgb + vec3(u_brightness), vec3(0), vec3(1));
 	#endif // ENABLE_brightness
@@ -191,11 +249,25 @@ void main()
 	// Re-multiply color values
 	gl_FragColor.rgb *= gl_FragColor.a + epsilon;
 
-	#endif // defined(ENABLE_color) || defined(ENABLE_brightness)
+	#endif // defined(ENABLE_color) || defined(ENABLE_brightness) || defined(CT_PM_STRAIGHT_COLOR)
 
 	#ifdef ENABLE_ghost
 	gl_FragColor *= u_ghost;
 	#endif // ENABLE_ghost
+
+	// ct-pm: channel multipliers and opacity, after ghost (as in PenguinMod)
+	#ifdef ENABLE_red
+	gl_FragColor.r *= u_red;
+	#endif // ENABLE_red
+	#ifdef ENABLE_green
+	gl_FragColor.g *= u_green;
+	#endif // ENABLE_green
+	#ifdef ENABLE_blue
+	gl_FragColor.b *= u_blue;
+	#endif // ENABLE_blue
+	#ifdef ENABLE_opaque
+	gl_FragColor.a *= u_opaque;
+	#endif // ENABLE_opaque
 
 	#ifdef DRAW_MODE_silhouette
 	// Discard fully transparent pixels for stencil test
