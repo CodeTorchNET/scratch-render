@@ -10,7 +10,7 @@ const methods = {
     /**
      * @param {int} drawableID the drawable that is asking
      * @param {Array<int>} [candidateIDs] candidateIDs
-     * @returns {?Array<number>} a a
+     * @returns {?Array<number>} a new [x, y] array (PenguinMod returned a shared, reused one), or null
      */
     getTouchingDrawablesPoint (drawableID, candidateIDs = this._drawList) {
         const drawable = this._allDrawables[drawableID];

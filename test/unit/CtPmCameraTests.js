@@ -37,7 +37,7 @@ const matrix = drawable => Array.from(drawable.getUniforms().u_modelMatrix);
  * @param {object} cam cam
  * @param {number} x world x
  * @param {number} y world y
- * @returns {Array<number>} screen screen
+ * @returns {Array<number>} screen [x, y]
  */
 const pmToScreen = (cam, x, y) => {
     const r = cam.dir * Math.PI / 180;

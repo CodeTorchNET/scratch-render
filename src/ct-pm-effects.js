@@ -164,7 +164,7 @@ const __rgb = [0, 0, 0];
  * The fragment shader's branchless RGB → HSV.
  * @param {Array<number>} rgb input
  * @param {Array<number>} dst output [h, s, v]
- * @returns {Array<number>} dst dst
+ * @returns {Array<number>} dst
  */
 const rgbToHsv = (rgb, dst) => {
     const r = rgb[0];
@@ -191,7 +191,7 @@ const rgbToHsv = (rgb, dst) => {
  * The fragment shader's HSV → RGB.
  * @param {Array<number>} hsv input
  * @param {Array<number>} dst output
- * @returns {Array<number>} dst dst
+ * @returns {Array<number>} dst
  */
 const hsvToRgb = (hsv, dst) => {
     const h = hsv[0];
@@ -210,7 +210,7 @@ const hsvToRgb = (hsv, dst) => {
  * @param {Drawable} drawable the drawable
  * @param {Uint8ClampedArray} inOutColor inOutColor
  * @param {number} effects effects
- * @returns {Uint8ClampedArray} inOutColor inOutColor
+ * @returns {Uint8ClampedArray} inOutColor
  */
 const transformColor = (drawable, inOutColor, effects) => {
     const u = drawable.getUniforms();

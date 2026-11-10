@@ -9,7 +9,7 @@ const indexHTML = path.resolve(__dirname, 'index.html');
 /**
  * Runs in the page.
  * @param {object} options options
- * @returns {object} results results
+ * @returns {object} results
  */
 const scene = options => {
     const gl = render._gl;

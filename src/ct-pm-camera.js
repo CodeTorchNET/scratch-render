@@ -78,7 +78,7 @@ const viewScale = drawable => {
 
 /**
  * @param {Drawable} drawable a drawable
- * @returns {boolean} true true
+ * @returns {boolean} true when its camera rotates it off the 90° grid (nearest sampling would alias)
  */
 const rotated = drawable => !!drawable._ctPmCamera && drawable._ctPmCamera.dir % 90 !== 0;
 
